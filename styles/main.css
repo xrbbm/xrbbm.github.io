@@ -751,3 +751,39 @@ a {
   font-size: 16px;
   margin: 4px 8px;
 }
+
+      .sidebar{
+    width: 320px;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background-color: #7c8280;
+    background-size: cover;
+    background-position: center;
+    background-image: url(../media/images/sidebar-bg.jpg);
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
+}
+.post-title{
+    position: relative;
+    width: -moz-fit-content;
+    width: -webkit-fit-content;
+    width: fit-content;
+}
+.post-title::after{
+    content: "";
+    border-bottom: 3px solid #333;
+    position:absolute;
+    bottom: -6px;
+    left: 100%;
+    width: 0;
+    transition: left 350ms , width 350ms;
+}
+.post-title:hover::after{
+    left: 0;
+    width: 100%;
+    transition: width 350ms;
+}
+    
