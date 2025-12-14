@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>今日吃什么 - 菜品摇奖器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 自定义Tailwind配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#ec4899',
+                        secondary: '#8b5cf6',
+                        accent: '#f97316',
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .card-shadow {
+                box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05), 0 8px 10px -6px rgba(0,0,0,0.05);
+            }
+            .slot-mask {
+                mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+                -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+            }
+        }
+    </style>
+    <style>
+        /* 老虎机滚动容器样式 */
+        .roll-container {
+            position: relative;
+            overflow: hidden;
+            height: 80px;
+            width: 100%;
+        }
+        .roll-list {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            transform: translateY(0);
+            transition: none; /* 禁用过渡，保证滚动流畅 */
+        }
+        .roll-item {
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 0 10px;
+            line-height: 80px;
+        }
+
+        /* 礼花特效样式 */
+        .fireworks-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .firework {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            opacity: 0;
+            animation: firework-burst 1.5s ease-out forwards, firework-fall 1.5s ease-out forwards;
+        }
+
+        /* 礼花爆炸动画 */
+        @keyframes firework-burst {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(0);
+            }
+            20% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(1.5);
+            }
+        }
+
+        /* 礼花下落动画 */
+        @keyframes firework-fall {
+            0% {
+                transform: translate(-50%, -50%) translateY(0);
+            }
+            100% {
+                transform: translate(-50%, -50%) translateY(100px);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+    <div class="container mx-auto px-4 py-8 max-w-md">
+        <!-- 标题卡片 -->
+        <div class="bg-gradient-to-r from-primary to-accent text-white rounded-2xl p-6 mb-6 card-shadow">
+            <h1 class="text-[clamp(1.8rem,4vw,2.5rem)] font-bold text-center text-shadow">今日吃什么？</h1>
+            <p class="text-center text-white/80 mt-2">纠结症患者的救星</p>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="bg-white rounded-2xl p-6 mb-6 card-shadow">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                <i class="fa fa-pencil-square-o mr-2 text-primary"></i>输入菜品
+            </h2>
+            <textarea 
+                id="menuInput" 
+                class="w-full h-32 p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition duration-200 resize-none"
+                placeholder="请输入菜品名称，支持换行、逗号、顿号分隔（例如：火锅,烤肉\n麻辣烫）"
+            ></textarea>
+            <div class="flex flex-wrap gap-3 mt-4">
+                <button id="addMenuBtn" class="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition duration-200 flex items-center">
+                    <i class="fa fa-plus mr-1"></i> 添加到奖池
+                </button>
+                <button id="resetPoolBtn" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition duration-200 flex items-center">
+                    <i class="fa fa-refresh mr-1"></i> 重置奖池
+                </button>
+                <button id="clearHistoryBtn" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition duration-200 flex items-center">
+                    <i class="fa fa-trash mr-1"></i> 清空历史
+                </button>
+                <button id="clearCookieBtn" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition duration-200 flex items-center">
+                    <i class="fa fa-cookie-bite mr-1"></i> 清除所有数据
+                </button>
+            </div>
+
+            <!-- 奖池显示 -->
+            <div class="mt-6">
+                <h3 class="text-sm font-semibold text-gray-600 mb-2 flex items-center">
+                    <i class="fa fa-list-ul mr-2 text-secondary"></i> 当前奖池
+                </h3>
+                <div id="menuPoolDisplay" class="bg-gray-50 p-3 rounded-lg h-24 overflow-y-auto text-sm text-gray-700">
+                    暂无菜品，请添加
+                </div>
+            </div>
+        </div>
+
+        <!-- 摇奖区域 -->
+        <div class="bg-gradient-to-r from-secondary to-indigo-500 text-white rounded-2xl p-6 mb-6 card-shadow text-center">
+            <h2 class="text-lg font-semibold mb-4 text-shadow">幸运老虎机</h2>
+            
+            <!-- 老虎机滚动容器（添加相对定位，用于礼花定位） -->
+            <div class="relative mx-auto w-full max-w-xs mb-6">
+                <!-- 礼花容器 -->
+                <div id="fireworksContainer" class="fireworks-container"></div>
+                <!-- 遮罩层（营造滚轮视觉效果） -->
+                <div class="absolute inset-0 slot-mask z-10 pointer-events-none"></div>
+                <!-- 滚动容器 -->
+                <div id="rollContainer" class="roll-container bg-white/10 rounded-lg">
+                    <div id="rollList" class="roll-list">
+                        <div class="roll-item text-[clamp(1.5rem,5vw,2.5rem)] font-bold text-shadow">点击开始摇奖</div>
+                    </div>
+                </div>
+            </div>
+
+            <button 
+                id="rollBtn" 
+                class="bg-white text-secondary font-bold py-3 px-8 rounded-full hover:bg-gray-100 transition duration-300 transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/50"
+            >
+                <i class="fa fa-random mr-2"></i> 开始摇奖
+            </button>
+        </div>
+
+        <!-- 历史记录 -->
+        <div class="bg-white rounded-2xl p-6 card-shadow">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                <i class="fa fa-history mr-2 text-accent"></i> 摇奖历史
+            </h2>
+            <div id="historyDisplay" class="bg-gray-50 p-3 rounded-lg h-32 overflow-y-auto text-sm text-gray-700">
+                暂无摇奖记录
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let menuPool = [];          // 菜品奖池
+        let historyList = [];       // 摇奖历史
+        let isRolling = false;      // 是否正在摇奖
+        let rollAnimation = null;   // 滚动动画帧
+        let rollPosition = 0;       // 滚动位置（像素）
+        let itemHeight = 80;        // 每个菜品项的高度
+        let listSingleHeight = 0;   // 单份菜品列表的高度
+        let startTime = 0;          // 滚动开始时间（时间戳）
+        let totalDuration = 0;      // 总滚动时长（毫秒：3-5秒随机）
+        let maxSpeed = 30;          // 最大滚动速度（像素/帧）
+        let targetIndex = 0;        // 目标菜品索引
+        let targetPosition = 0;     // 目标位置（精准居中）
+        let containerCenterOffset = 0; // 容器中心偏移量
+
+        // Cookie配置
+        const COOKIE_CONFIG = {
+            menuKey: 'foodLottery_menuPool',
+            historyKey: 'foodLottery_historyList',
+            expiresDays: 7 // Cookie过期时间：7天
+        };
+
+        // DOM元素
+        const menuInput = document.getElementById('menuInput');
+        const addMenuBtn = document.getElementById('addMenuBtn');
+        const resetPoolBtn = document.getElementById('resetPoolBtn');
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+        const clearCookieBtn = document.getElementById('clearCookieBtn');
+        const menuPoolDisplay = document.getElementById('menuPoolDisplay');
+        const rollContainer = document.getElementById('rollContainer');
+        const rollList = document.getElementById('rollList');
+        const rollBtn = document.getElementById('rollBtn');
+        const historyDisplay = document.getElementById('historyDisplay');
+        const fireworksContainer = document.getElementById('fireworksContainer');
+
+        // ---------------------- Cookie操作工具函数 ----------------------
+        /**
+         * 设置Cookie
+         * @param {string} name Cookie名称
+         * @param {any} value Cookie值（会序列化为JSON）
+         * @param {number} days 过期天数
+         */
+        function setCookie(name, value, days) {
+            const date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            const expires = `expires=${date.toUTCString()}`;
+            const encodedValue = encodeURIComponent(JSON.stringify(value));
+            document.cookie = `${name}=${encodedValue}; ${expires}; path=/`;
+        }
+
+        /**
+         * 获取Cookie
+         * @param {string} name Cookie名称
+         * @returns {any} 解析后的Cookie值，不存在则返回null
+         */
+        function getCookie(name) {
+            const nameEQ = `${name}=`;
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                let cookie = cookies[i].trim();
+                if (cookie.indexOf(nameEQ) === 0) {
+                    const encodedValue = cookie.substring(nameEQ.length);
+                    return JSON.parse(decodeURIComponent(encodedValue));
+                }
+            }
+            return null;
+        }
+
+        /**
+         * 删除Cookie
+         * @param {string} name Cookie名称
+         */
+        function deleteCookie(name) {
+            document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        }
+
+        /**
+         * 从Cookie加载数据
+         */
+        function loadDataFromCookie() {
+            const savedMenu = getCookie(COOKIE_CONFIG.menuKey);
+            const savedHistory = getCookie(COOKIE_CONFIG.historyKey);
+            
+            if (savedMenu) menuPool = savedMenu;
+            if (savedHistory) historyList = savedHistory;
+        }
+
+        /**
+         * 保存菜单池到Cookie
+         */
+        function saveMenuPoolToCookie() {
+            setCookie(COOKIE_CONFIG.menuKey, menuPool, COOKIE_CONFIG.expiresDays);
+        }
+
+        /**
+         * 保存摇奖历史到Cookie
+         */
+        function saveHistoryListToCookie() {
+            setCookie(COOKIE_CONFIG.historyKey, historyList, COOKIE_CONFIG.expiresDays);
+        }
+
+        /**
+         * 清除所有相关Cookie
+         */
+        function clearAllCookies() {
+            deleteCookie(COOKIE_CONFIG.menuKey);
+            deleteCookie(COOKIE_CONFIG.historyKey);
+        }
+
+        // ---------------------- 业务逻辑函数 ----------------------
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            // 先从Cookie加载数据
+            loadDataFromCookie();
+            bindEvents();
+            updateMenuPoolDisplay();
+            updateHistoryDisplay();
+            itemHeight = rollContainer.offsetHeight;
+            containerCenterOffset = (rollContainer.offsetHeight - itemHeight) / 2;
+        });
+
+        // 绑定事件
+        function bindEvents() {
+            addMenuBtn.addEventListener('click', addMenuToPool);
+            resetPoolBtn.addEventListener('click', () => {
+                if (confirm('确定要清空奖池吗？')) {
+                    menuPool = [];
+                    saveMenuPoolToCookie(); // 同步到Cookie
+                    updateMenuPoolDisplay();
+                }
+            });
+            clearHistoryBtn.addEventListener('click', () => {
+                if (confirm('确定要清空摇奖历史吗？')) {
+                    historyList = [];
+                    saveHistoryListToCookie(); // 同步到Cookie
+                    updateHistoryDisplay();
+                }
+            });
+            // 清除Cookie按钮事件
+            clearCookieBtn.addEventListener('click', () => {
+                if (confirm('确定要清除所有本地数据吗？（奖池和历史记录将被永久删除）')) {
+                    clearAllCookies();
+                    menuPool = [];
+                    historyList = [];
+                    updateMenuPoolDisplay();
+                    updateHistoryDisplay();
+                    alert('所有本地数据已清除！');
+                }
+            });
+            rollBtn.addEventListener('click', startRolling);
+            menuInput.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    addMenuToPool();
+                }
+            });
+            window.addEventListener('resize', () => {
+                itemHeight = rollContainer.offsetHeight;
+                containerCenterOffset = (rollContainer.offsetHeight - itemHeight) / 2;
+                // 重新计算目标位置（如果已存在）
+                if (targetIndex !== undefined) {
+                    targetPosition = (targetIndex * itemHeight) - containerCenterOffset;
+                }
+            });
+        }
+
+        // 解析输入的菜品
+        function parseInput(text) {
+            const separators = /[\n,，、\s]+/;
+            return text.split(separators)
+                .map(item => item.trim())
+                .filter(item => item)
+                .filter((value, index, self) => self.indexOf(value) === index);
+        }
+
+        // 添加菜品到奖池
+        function addMenuToPool() {
+            const inputText = menuInput.value;
+            if (!inputText) {
+                alert('请输入菜品名称！');
+                return;
+            }
+
+            const newMenus = parseInput(inputText);
+            menuPool = [...new Set([...menuPool, ...newMenus])];
+            saveMenuPoolToCookie(); // 同步到Cookie
+            menuInput.value = '';
+            updateMenuPoolDisplay();
+            menuInput.focus();
+        }
+
+        // 更新奖池显示
+        function updateMenuPoolDisplay() {
+            if (menuPool.length === 0) {
+                menuPoolDisplay.innerHTML = '<span class="text-gray-400">暂无菜品，请添加</span>';
+                return;
+            }
+
+            menuPoolDisplay.innerHTML = menuPool.map(menu => 
+                `<span class="inline-block bg-primary/10 text-primary px-2 py-1 rounded m-1">${menu}</span>`
+            ).join('');
+        }
+
+        // 更新历史记录显示
+        function updateHistoryDisplay() {
+            if (historyList.length === 0) {
+                historyDisplay.innerHTML = '<span class="text-gray-400">暂无摇奖记录</span>';
+                return;
+            }
+
+            historyDisplay.innerHTML = historyList.map((item, index) => 
+                `<div class="flex items-center justify-between py-1 border-b border-gray-100 last:border-0">
+                    <span>${index + 1}. ${item}</span>
+                    <span class="text-gray-400 text-xs">${new Date().toLocaleTimeString()}</span>
+                </div>`
+            ).join('');
+        }
+
+        // 构建滚动列表（重复10次，保证足够长度）
+        function buildRollList() {
+            const repeatCount = 10;
+            let listHtml = '';
+            
+            for (let i = 0; i < repeatCount; i++) {
+                menuPool.forEach(menu => {
+                    listHtml += `<div class="roll-item text-[clamp(1.5rem,5vw,2.5rem)] font-bold text-shadow">${menu}</div>`;
+                });
+            }
+            
+            rollList.innerHTML = listHtml;
+            listSingleHeight = menuPool.length * itemHeight;
+            rollPosition = containerCenterOffset;
+            rollList.style.transform = `translateY(${rollPosition}px)`;
+        }
+
+        // 生成礼花特效
+        function createFireworks() {
+            // 清空之前的礼花
+            fireworksContainer.innerHTML = '';
+            
+            // 礼花颜色集合
+            const colors = ['#ff0000', '#ff9900', '#ffff00', '#00ff00', '#0099ff', '#9900ff', '#ec4899', '#8b5cf6', '#f97316'];
+            // 礼花数量
+            const fireworkCount = 50;
+            // 礼花中心位置（摇奖容器中心）
+            const centerX = rollContainer.offsetWidth / 2;
+            const centerY = rollContainer.offsetHeight / 2;
+
+            for (let i = 0; i < fireworkCount; i++) {
+                const firework = document.createElement('div');
+                firework.classList.add('firework');
+                
+                // 随机颜色
+                firework.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                // 随机位置（围绕中心扩散）
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 60;
+                firework.style.left = `${centerX + Math.cos(angle) * distance}px`;
+                firework.style.top = `${centerY + Math.sin(angle) * distance}px`;
+                // 随机动画延迟和时长
+                firework.style.animationDelay = `${Math.random() * 0.5}s`;
+                firework.style.animationDuration = `${1 + Math.random() * 1}s`;
+                // 随机大小
+                const size = 4 + Math.random() * 6;
+                firework.style.width = `${size}px`;
+                firework.style.height = `${size}px`;
+
+                fireworksContainer.appendChild(firework);
+
+                // 动画结束后移除粒子
+                setTimeout(() => {
+                    firework.remove();
+                }, 2000);
+            }
+        }
+
+        // 计算当前速度（基于正弦/余弦函数的速度曲线）
+        function getCurrentSpeed(elapsedTime) {
+            const progress = elapsedTime / totalDuration; // 进度比（0-1）
+            const accelerateDuration = 0.15; // 加速阶段占比（15%）
+            const decelerateDuration = 0.25; // 减速阶段占比（最后25%，约1秒）
+            const decelerateStart = 1 - decelerateDuration; // 减速开始进度
+
+            let speed = 0;
+
+            if (progress < accelerateDuration) {
+                // 加速阶段：正弦函数上升沿（0→π/2），速度从0平滑到最大
+                const angle = progress / accelerateDuration * Math.PI / 2;
+                speed = maxSpeed * Math.sin(angle);
+            } else if (progress < decelerateStart) {
+                // 匀速阶段：保持最大速度
+                speed = maxSpeed;
+            } else {
+                // 减速阶段：余弦函数下降沿（0→π/2），速度从最大平滑到0
+                const decelerateProgress = (progress - decelerateStart) / decelerateDuration;
+                const angle = decelerateProgress * Math.PI / 2;
+                speed = maxSpeed * Math.cos(angle);
+
+                // 减速阶段：让位置向目标位置靠拢（消除最终跳变）
+                const currentAbsPos = Math.abs(rollPosition);
+                // 计算与目标位置的差值，逐步修正
+                const posDiff = (currentAbsPos % listSingleHeight) - targetPosition;
+                if (Math.abs(posDiff) < speed) {
+                    // 最后几帧：速度直接等于差值，精准定位
+                    speed = Math.abs(posDiff) * (posDiff > 0 ? 1 : -1);
+                }
+            }
+
+            return speed;
+        }
+
+        // 开始摇奖动画（正弦函数速度曲线+无缝定位）
+        function startRolling() {
+            if (menuPool.length === 0) {
+                alert('奖池为空，请先添加菜品！');
+                return;
+            }
+            if (isRolling) return;
+
+            // 重置状态
+            isRolling = true;
+            rollBtn.disabled = true;
+            rollBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i> 摇奖中...';
+
+            buildRollList();
+
+            // 随机配置
+            totalDuration = 3000 + Math.random() * 2000; // 总时长3-5秒
+            targetIndex = Math.floor(Math.random() * menuPool.length); // 随机目标菜品
+            targetPosition = (targetIndex * itemHeight) - containerCenterOffset; // 目标位置
+            startTime = performance.now(); // 记录开始时间戳
+
+            // 滚动动画函数
+            function animateRoll(currentTime) {
+                // 计算已流逝时间
+                const elapsedTime = currentTime - startTime;
+
+                // 1. 计算当前速度（正弦/余弦曲线+位置修正）
+                const currentSpeed = getCurrentSpeed(elapsedTime);
+
+                // 2. 更新滚动位置（速度为0时停止更新）
+                if (currentSpeed > 0) {
+                    rollPosition -= currentSpeed;
+                }
+
+                // 3. 无缝滚动重置（高速时隐蔽触发）
+                const currentAbsPos = Math.abs(rollPosition);
+                if (currentAbsPos > listSingleHeight * 3) {
+                    rollPosition += listSingleHeight * 3;
+                }
+
+                // 4. 应用位置变换
+                rollList.style.transform = `translateY(${rollPosition}px)`;
+
+                // 5. 判断是否停止：速度为0 或 超过总时长
+                if (elapsedTime < totalDuration && currentSpeed > 0.1) {
+                    rollAnimation = requestAnimationFrame(animateRoll);
+                } else {
+                    // 最终位置：确保精准居中（无跳变）
+                    rollPosition = -targetPosition - (Math.floor(currentAbsPos / listSingleHeight) * listSingleHeight);
+                    rollList.style.transform = `translateY(${rollPosition}px)`;
+                    finishRolling(targetIndex);
+                }
+            }
+
+            // 启动动画
+            rollAnimation = requestAnimationFrame(animateRoll);
+        }
+
+        // 完成摇奖
+        function finishRolling(targetIndex) {
+            if (rollAnimation) {
+                cancelAnimationFrame(rollAnimation);
+                rollAnimation = null;
+            }
+            
+            // 获取结果菜品
+            const result = menuPool[targetIndex];
+            
+            // 触发礼花特效
+            createFireworks();
+            
+            // 添加到历史记录
+            historyList.unshift(result);
+            if (historyList.length > 20) {
+                historyList.pop();
+            }
+            saveHistoryListToCookie(); // 同步到Cookie
+
+            updateHistoryDisplay();
+
+            // 恢复状态
+            isRolling = false;
+            rollBtn.disabled = false;
+            rollBtn.innerHTML = '<i class="fa fa-random mr-2"></i> 开始摇奖';
+
+            // 菜品居中强调动画（柔和缩放，避免回弹视觉）
+            rollList.animate([
+                { transform: `translateY(${rollPosition}px) scale(1.05)`, opacity: 1 },
+                { transform: `translateY(${rollPosition}px) scale(1)`, opacity: 1 }
+            ], { duration: 300, easing: 'ease-out' });
+        }
+    </script>
+</body>
+</html>
